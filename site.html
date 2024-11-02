@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Движущиеся фишки с отдельным следом</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 1px solid #000;
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            width: 250px;
+            max-height: 90vh;
+            overflow-y: auto;
+            text-align: left;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            display: none; /* Скрыть меню по умолчанию */
+        }
+        #menuToggle {
+            cursor: pointer;
+            position: absolute;
+            top: 10px;
+            right: 270px; /* Отодвигаем кнопку от меню */
+            z-index: 2;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        #menuToggle:hover {
+            background-color: #0056b3;
+        }
+        input[type="number"] {
+            width: calc(100% - 10px);
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #007BFF;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .name-button, .background-button {
+            margin: 5px 0;
+            width: 100%;
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .name-button:hover, .background-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <button id="menuToggle">☰</button> <!-- Кнопка для открытия/закрытия меню -->
+    <div id="controls">
+        <input type="number" id="pieceCount" placeholder="Количество фишек" min="1">
+        <button id="addPiecesButton" class="name-button">Добавить фишки</button>
+        <div id="nameInputs"></div>
+        <div id="backgroundButtons"></div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let pieces = [];
+        let isRightMouseDown = false;
+        let lastTrailAction = [];
+
+        const backgrounds = [
+            'байкерка.png',
+            'бк.png',
+            'бладсы.png',
+            'грейпсид.png',
+            'зерно.png',
+            'кайо.png',
+            'каньон.png',
+            'лес.png',
+            'лесопилка.png',
+            'ломатьнестроить.png',
+            'малыеконты.png',
+            'мексы.png',
+            'миррор.png',
+            'мусор.png',
+            'мясо.png',
+            'нг.png',
+            'нефть.png',
+            'ограбы.png',
+            'поезда.png',
+            'самолеты.png',
+            'сталь.png',
+            'стеб.png',
+            'стройка.png',
+            'тшка.png',
+        ];
+        let currentBackgroundIndex = 0;
+        const backgroundImage = new Image();
+        backgroundImage.src = backgrounds[currentBackgroundIndex];
+
+        document.getElementById('addPiecesButton').addEventListener('click', () => {
+            const count = parseInt(document.getElementById('pieceCount').value);
+            if (count > 0) {
+                addPieces(count);
+            }
+        });
+
+        function addPieces(count) {
+            const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080'];
+            const baseX = canvas.width / 2;
+            const baseY = canvas.height / 2;
+            const spacing = 30;
+
+            for (let i = 0; i < count; i++) {
+                const color = colors[i % colors.length];
+                const angle = (i / count) * 2 * Math.PI;
+                const offsetX = Math.cos(angle) * spacing * (i % 5);
+                const offsetY = Math.sin(angle) * spacing * (i % 5);
+
+                const pieceIndex = pieces.length;
+                pieces.push({ x: baseX + offsetX, y: baseY + offsetY, color, isDragging: false, name: '', trails: [] });
+
+                const button = document.createElement('button');
+                button.className = 'name-button';
+                button.innerText = `Название фишки ${pieceIndex + 1}`;
+                document.getElementById('nameInputs').appendChild(button);
+                
+                button.addEventListener('click', () => {
+                    const newName = prompt('Введите новое название фишки:', pieces[pieceIndex].name);
+                    if (newName !== null) {
+                        pieces[pieceIndex].name = newName;
+                        button.innerText = newName || `Название фишки ${pieceIndex + 1}`;
+                    }
+                });
+            }
+            draw();
+        }
+
+        function createBackgroundButtons() {
+            const buttonContainer = document.getElementById('backgroundButtons');
+            backgrounds.forEach((background, index) => {
+                const button = document.createElement('button');
+                button.className = 'background-button';
+                const backgroundName = background.split('.')[0]; 
+                button.innerText = backgroundName; 
+                button.addEventListener('click', () => {
+                    currentBackgroundIndex = index;
+                    backgroundImage.src = backgrounds[currentBackgroundIndex];
+                });
+                buttonContainer.appendChild(button);
+            });
+        }
+
+        document.getElementById('menuToggle').addEventListener('click', () => {
+            const controls = document.getElementById('controls');
+            controls.style.display = controls.style.display === 'none' || controls.style.display === '' ? 'block' : 'none';
+        });
+
+        canvas.addEventListener('mousedown', (event) => {
+            if (event.button === 0) {
+                pieces.forEach(piece => {
+                    if (isMouseOverPiece(event.offsetX, event.offsetY, piece)) {
+                        piece.isDragging = true;
+                    }
+                });
+            } else if (event.button === 2) {
+                isRightMouseDown = true;
+            }
+        });
+
+        canvas.addEventListener('mouseup', (event) => {
+            if (event.button === 0) {
+                pieces.forEach(piece => {
+                    piece.isDragging = false;
+                });
+            } else if (event.button === 2) {
+                isRightMouseDown = false;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            pieces.forEach(piece => {
+                if (piece.isDragging) {
+                    const prevX = piece.x;
+                    const prevY = piece.y;
+
+                    piece.x = event.offsetX;
+                    piece.y = event.offsetY;
+
+                    if (isRightMouseDown) {
+                        const steps = 100;
+                        const newTrails = [];
+                        for (let i = 1; i <= steps; i++) {
+                            const interpolatedX = prevX + (piece.x - prevX) * (i / steps);
+                            const interpolatedY = prevY + (piece.y - prevY) * (i / steps);
+                            newTrails.push({ x: interpolatedX, y: interpolatedY, color: piece.color });
+                        }
+                        piece.trails.push(...newTrails);
+                        lastTrailAction.push({ piece, newTrails });
+                    }
+                }
+            });
+            draw();
+        });
+
+        function isMouseOverPiece(mouseX, mouseY, piece) {
+            const radius = 20;
+            return mouseX >= piece.x - radius && mouseX <= piece.x + radius &&
+                   mouseY >= piece.y - radius && mouseY <= piece.y + radius;
+        }
+
+        function draw() {
+            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+
+            pieces.forEach(piece => {
+                ctx.beginPath();
+                ctx.arc(piece.x, piece.y, 20, 0, Math.PI * 2);
+                ctx.fillStyle = piece.color;
+                ctx.fill();
+                ctx.closePath();
+
+                // Определяем цвет текста
+                const textColor = piece.color === '#FFFF00' ? '#000000' : '#FFFFFF';
+                
+                // Устанавливаем стиль текста и контур
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.lineWidth = 4; // Толщина контура
+
+                // Рисуем контур текста
+                ctx.strokeStyle = '#000000'; // Цвет контура
+                ctx.strokeText(piece.name, piece.x, piece.y - 10); // Рисуем контур
+                
+                // Рисуем текст
+                ctx.fillStyle = textColor; // Цвет текста
+                ctx.fillText(piece.name, piece.x, piece.y - 10); // Рисуем текст
+
+                piece.trails.forEach(trail => {
+                    ctx.beginPath();
+                    ctx.arc(trail.x, trail.y, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = trail.color;
+                    ctx.fill();
+                    ctx.closePath();
+                });
+            });
+        }
+
+        canvas.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            draw();
+        });
+
+        window.addEventListener('keydown', (event) => {
+            if (event.ctrlKey && (event.code === 'KeyZ')) {
+                undoLastAction();
+            }
+        });
+
+        function undoLastAction() {
+            if (lastTrailAction.length > 0) {
+                const lastAction = lastTrailAction.pop();
+                const piece = lastAction.piece;
+                piece.trails = piece.trails.slice(0, piece.trails.length - lastAction.newTrails.length);
+            }
+            draw();
+        }
+
+        createBackgroundButtons();
+        draw();
+    </script>
+</body>
+</html>
